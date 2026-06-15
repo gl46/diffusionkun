@@ -9,6 +9,9 @@ ZH_RE = re.compile(r"[\u4e00-\u9fff]")
 EN_RE = re.compile(r"[A-Za-z]")
 URL_RE = re.compile(r"https?://[^\s]+")
 NUM_RE = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?")
+HTML_TAG_RE = re.compile(r"</?[a-zA-Z][^>]{0,200}>")
+HTML_ENTITY_RE = re.compile(r"&(?:nbsp|amp|lt|gt|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);")
+CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 BAD_PREFIX_RE = re.compile(r"^(译文如下|这句话可以翻译为|the translation is|here is the translation|translation:)\s*", re.I)
 
 
@@ -41,6 +44,18 @@ def too_repetitive(s: str) -> bool:
     return max(s.count(ch) for ch in set(s)) / len(s) > 0.5
 
 
+def has_html_garbage(s: str) -> bool:
+    if HTML_TAG_RE.search(s) or HTML_ENTITY_RE.search(s):
+        return True
+    if CONTROL_RE.search(s) or '\ufffd' in s:
+        return True
+    if len(s) >= 20:
+        textish = len(re.findall(r"[\w\s\u4e00-\u9fff.,!?;:'\"()\[\]{}，。！？；：“”‘’、\-]", s))
+        if textish / max(len(s), 1) < 0.55:
+            return True
+    return False
+
+
 def rule_filter(src: str, tgt: str):
     if not src or not tgt:
         return False, 'empty'
@@ -57,6 +72,8 @@ def rule_filter(src: str, tgt: str):
         return False, 'src_not_zh'
     if en_ratio(tgt) < 0.25:
         return False, 'tgt_not_en'
+    if has_html_garbage(src) or has_html_garbage(tgt):
+        return False, 'html_or_garbage'
     if too_repetitive(src) or too_repetitive(tgt):
         return False, 'repetitive'
     if urls(src) != urls(tgt):
